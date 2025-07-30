@@ -2,6 +2,8 @@
 
 **Docwise** is an intelligent web app for asking questions about any PDF—powered by Google’s Gemini language model. Upload a PDF, ask questions, and get precise answers based on the document’s content.
 
+https://github.com/Keshav-spec/Docwise/blob/main/Screenshot%202025-07-30%20153630.png?raw=true
+
 ---
 
 ## ✅ Current Features
