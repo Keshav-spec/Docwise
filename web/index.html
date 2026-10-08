@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Docwise provides semantic retrieval and precision document Q&A using Google Gemini embeddings and generative language models.">
+  <title>Docwise - Intelligent Document Analysis & Retrieval</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="app-container" class="app-container">
+    <!-- Top Navigation Bar -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-icon-wrapper">
+          <svg class="brand-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">Docwise</span>
+          <span class="brand-subtitle">Dense Retrieval & Document Intelligence</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div id="system-status-indicator" class="status-indicator">
+          <span class="status-dot"></span>
+          <span id="status-text" class="status-text">Checking System</span>
+        </div>
+        <button id="settings-toggle-btn" class="secondary-btn" title="Configure API Key and Model">
+          <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </button>
+        <button id="clear-session-btn" class="secondary-btn" title="Reset Current Document and Session">
+          <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>Reset Session</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <main class="main-layout">
+      <!-- Left Sidebar: Document Management & Metadata -->
+      <aside class="sidebar-panel">
+        <section class="upload-section">
+          <h2 class="section-heading">Document Ingestion</h2>
+          <div id="drop-zone" class="drop-zone">
+            <input type="file" id="pdf-file-input" accept=".pdf" class="file-input-hidden">
+            <div class="drop-zone-content">
+              <svg class="upload-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <p class="drop-title">Select or drag PDF file</p>
+              <p class="drop-subtitle">Processes pages, extracts metadata, builds vector embeddings</p>
+              <button type="button" id="browse-btn" class="browse-btn">Browse Files</button>
+            </div>
+          </div>
+          <div id="upload-progress-container" class="upload-progress-container hidden">
+            <div class="progress-bar-bg">
+              <div id="upload-progress-bar" class="progress-bar-fill"></div>
+            </div>
+            <span id="upload-status-text" class="upload-status-text">Embedding document chunks...</span>
+          </div>
+        </section>
+
+        <!-- Document Metadata Details -->
+        <section id="doc-meta-section" class="doc-meta-section hidden">
+          <h2 class="section-heading">Active Document</h2>
+          <div class="meta-card">
+            <div class="meta-row">
+              <span class="meta-label">File:</span>
+              <span id="meta-filename" class="meta-value">-</span>
+            </div>
+            <div class="meta-grid">
+              <div class="meta-stat">
+                <span class="stat-number" id="meta-pages">0</span>
+                <span class="stat-label">Pages</span>
+              </div>
+              <div class="meta-stat">
+                <span class="stat-number" id="meta-chunks">0</span>
+                <span class="stat-label">Chunks</span>
+              </div>
+              <div class="meta-stat">
+                <span class="stat-number" id="meta-chars">0</span>
+                <span class="stat-label">Characters</span>
+              </div>
+            </div>
+            <div class="meta-row status-row">
+              <span class="meta-label">Retrieval Engine:</span>
+              <span id="meta-engine-badge" class="engine-badge">Dense Embeddings</span>
+            </div>
+          </div>
+
+          <!-- Document Executive Summary -->
+          <div class="summary-card">
+            <h3 class="card-title">Executive Summary</h3>
+            <p id="doc-summary-text" class="summary-text">Upload a document to view an automated summary.</p>
+          </div>
+
+          <!-- Suggested Starter Questions -->
+          <div class="starter-questions-card">
+            <h3 class="card-title">Suggested Questions</h3>
+            <div id="starter-questions-list" class="starter-questions-list">
+              <button class="question-chip" data-question="What are the key conclusions of this document?">What are the key conclusions of this document?</button>
+              <button class="question-chip" data-question="Summarize the primary methodology or arguments.">Summarize the primary methodology or arguments.</button>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <!-- Right Panel: Conversation Stream & Query Bar -->
+      <section class="conversation-panel">
+        <div class="chat-header-bar">
+          <div class="chat-header-info">
+            <h1 class="chat-title">Document Intelligence Assistant</h1>
+            <p class="chat-desc">Semantic queries reference verified page sources and dense vector indices.</p>
+          </div>
+          <div class="chat-header-tools">
+            <button id="export-btn" class="icon-tool-btn" title="Export Q&A Transcript">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Export</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="chat-messages-container" class="chat-messages-container">
+          <!-- Initial welcome card -->
+          <div class="welcome-card" id="welcome-message-card">
+            <div class="welcome-badge">Docwise RAG Architecture</div>
+            <h2 class="welcome-title">Ask anything about your document</h2>
+            <p class="welcome-text">
+              Upload any PDF document using the panel on the left. Docwise divides the text into contextual overlapping chunks, computes semantic dense vectors via Google Gemini text-embedding-004, and returns verified responses with page citations.
+            </p>
+            <div class="features-list">
+              <div class="feature-item">
+                <span class="feature-title">Dense Embeddings</span>
+                <span class="feature-desc">Goes beyond literal keywords to understand semantic concepts and synonyms.</span>
+              </div>
+              <div class="feature-item">
+                <span class="feature-title">Source Attribution</span>
+                <span class="feature-desc">Every response maps directly to specific page numbers and passage excerpts.</span>
+              </div>
+              <div class="feature-item">
+                <span class="feature-title">Sliding Chunking</span>
+                <span class="feature-desc">Maintains sentence boundaries and context overlap to eliminate boundary loss.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Query Input Form -->
+        <div class="query-input-section">
+          <form id="query-form" class="query-form">
+            <div class="input-container">
+              <textarea
+                id="query-input"
+                class="query-textarea"
+                placeholder="Ask a question about the document... (Press Enter to submit, Shift+Enter for newline)"
+                rows="1"
+              ></textarea>
+              <button type="submit" id="submit-query-btn" class="send-btn" title="Submit Question">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </form>
+          <div class="query-footer-info">
+            <span>Powered by Google Gemini 1.5 & text-embedding-004</span>
+            <span id="engine-status-text">Embedding Index: Ready</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Configuration Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 class="modal-title">System Configuration</h2>
+          <button id="close-modal-btn" class="modal-close-btn" title="Close Modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="api-key-input" class="form-label">Google Gemini API Key</label>
+            <input
+              type="password"
+              id="api-key-input"
+              class="form-input"
+              placeholder="Enter Gemini API key (or set in .env)"
+            >
+            <p class="form-help">The API key is securely used to compute dense embeddings and generate responses.</p>
+          </div>
+          <div class="form-group">
+            <label for="model-select" class="form-label">Generation Model</label>
+            <select id="model-select" class="form-select">
+              <option value="gemini-1.5-flash" selected>gemini-1.5-flash (Fast & Accurate)</option>
+              <option value="gemini-1.5-pro">gemini-1.5-pro (High-Precision Reasoning)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="top-k-input" class="form-label">Retrieved Chunks Count (Top-K)</label>
+            <input
+              type="number"
+              id="top-k-input"
+              class="form-input"
+              min="1"
+              max="10"
+              value="4"
+            >
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="save-settings-btn" class="primary-btn">Save Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
