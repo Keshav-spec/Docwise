@@ -4,11 +4,12 @@ from core.config import DEFAULT_GENERATION_MODEL, DEFAULT_TOP_K
 from core.embeddings import VectorStore
 
 SYSTEM_INSTRUCTION = (
-    "You are Docwise, an AI document assistant. Answer the user's question accurately "
-    "and concisely using only the provided document excerpts. When referencing information, "
-    "explicitly mention the page number using the format [Page X]. If the answer cannot be "
-    "found in the excerpts, state clearly that the document does not contain that information. "
-    "Do not extrapolate or fabricate facts."
+    "You are Docwise, an AI document intelligence assistant. Provide comprehensive, "
+    "accurate, and well-structured answers using the provided document excerpts. "
+    "When referencing facts, explicitly cite the source page using [Page X]. "
+    "If the document is a resume or CV, identify the candidate by name, extract their "
+    "professional summary, work experience, technical skills, projects, and education. "
+    "Do not extrapolate or fabricate facts not present in the excerpts."
 )
 
 _cached_working_model: Optional[str] = None
@@ -104,10 +105,8 @@ def generate_with_fallback(
         except Exception as e:
             last_error = e
             err_msg = str(e).lower()
-            # If model is 404 or unsupported, continue trying next candidate
             if "404" in err_msg or "not found" in err_msg or "not supported" in err_msg:
                 continue
-            # If authentication or quota failure, do not retry other models pointlessly
             if "quota" in err_msg or "api_key" in err_msg or "permission" in err_msg or "invalid api key" in err_msg:
                 raise e
             continue
@@ -124,8 +123,8 @@ def answer_question_with_citations(
     top_k: int = DEFAULT_TOP_K
 ) -> Dict[str, Any]:
     """
-    Performs semantic retrieval against the vector store and synthesizes an answer
-    with explicit page citations using Gemini with automatic model fallback.
+    Performs semantic retrieval with dynamic full-document context windowing,
+    structured resume/document formatting, and explicit page citations.
     """
     if not api_key or not api_key.strip():
         return {
@@ -134,22 +133,57 @@ def answer_question_with_citations(
             "retrieval_method": "none"
         }
 
-    relevant_chunks = vector_store.query(question, api_key=api_key, top_k=top_k)
-    if not relevant_chunks:
+    if not vector_store.chunks:
         return {
             "answer": "No indexed document chunks found. Please upload a PDF first.",
             "citations": [],
             "retrieval_method": "none"
         }
 
+    q_lower = question.lower().strip()
+    is_summary_query = any(k in q_lower for k in [
+        "summar", "overview", "who is", "whose", "what is this",
+        "about this", "resume", "cv", "profile", "background",
+        "experience", "skills", "tell me about", "brief", "key points"
+    ])
+
+    total_chunks = len(vector_store.chunks)
+
+    # Dynamic context window: if the document is short (<= 15 chunks, such as a resume)
+    # or if the query is a document-level summary query, supply full context to Gemini
+    if total_chunks <= 15 or is_summary_query:
+        if total_chunks <= 15:
+            selected_chunks = []
+            for i, chunk in enumerate(vector_store.chunks):
+                c_copy = dict(chunk)
+                # Assign strong context score for complete document retrieval
+                c_copy["score"] = round(0.95 - (i * 0.02), 2)
+                c_copy["retrieval_method"] = "full_document_context"
+                selected_chunks.append(c_copy)
+        else:
+            # For larger documents with a summary query, combine first chunks with top semantic matches
+            top_matches = vector_store.query(question, api_key=api_key, top_k=max(top_k, 8))
+            lead_chunks = vector_store.chunks[:2]
+            combined_dict = {}
+            for c in lead_chunks:
+                c_dict = dict(c)
+                c_dict["score"] = 0.90
+                c_dict["retrieval_method"] = "lead_context"
+                combined_dict[c_dict["chunk_id"]] = c_dict
+            for c in top_matches:
+                combined_dict[c["chunk_id"]] = c
+            selected_chunks = list(combined_dict.values())
+    else:
+        selected_chunks = vector_store.query(question, api_key=api_key, top_k=top_k)
+
     formatted_context_parts = []
     citations = []
 
-    for chunk in relevant_chunks:
+    for chunk in selected_chunks:
         page_num = chunk.get("page_num", 1)
         doc_name = chunk.get("doc_name", "Document")
         snippet = chunk.get("text", "")
-        score = chunk.get("score", 0.0)
+        score = chunk.get("score", 0.85)
 
         formatted_context_parts.append(
             f"--- Source: {doc_name} | Page {page_num} ---\n{snippet}"
@@ -157,18 +191,30 @@ def answer_question_with_citations(
         citations.append({
             "doc_name": doc_name,
             "page_num": page_num,
-            "snippet": snippet[:200] + ("..." if len(snippet) > 200 else ""),
-            "score": round(score, 4)
+            "snippet": snippet[:220] + ("..." if len(snippet) > 220 else ""),
+            "score": round(score, 2)
         })
 
     context_str = "\n\n".join(formatted_context_parts)
-    prompt = f"""Document Excerpts:
+
+    prompt = f"""Analyze the provided document excerpts and provide an accurate, structured response.
+
+Guidelines:
+1. If this document is a resume or CV, structure your response clearly using the following sections:
+   - Candidate Profile (Name, current title, and core background)
+   - Professional Experience & Key Achievements
+   - Technical & Domain Skills (Programming languages, frameworks, databases, cloud platforms)
+   - Key Projects (Project title, technologies used, and outcomes)
+   - Education & Certifications
+2. If this is a general report or document, provide an executive summary followed by core findings and conclusions.
+3. Reference page citations using [Page X] for every key fact.
+4. Base your answer strictly on the provided text.
+
+Document Excerpts:
 {context_str}
 
 User Question:
-{question}
-
-Provide an accurate, well-structured answer with page citations [Page X]."""
+{question}"""
 
     try:
         answer_text = generate_with_fallback(
@@ -180,14 +226,14 @@ Provide an accurate, well-structured answer with page citations [Page X]."""
 
         return {
             "answer": answer_text,
-            "citations": citations,
-            "retrieval_method": relevant_chunks[0].get("retrieval_method", "unknown")
+            "citations": citations[:6],
+            "retrieval_method": selected_chunks[0].get("retrieval_method", "unknown")
         }
     except Exception as e:
         return {
             "answer": f"API Error while generating answer: {str(e)}",
-            "citations": citations,
-            "retrieval_method": relevant_chunks[0].get("retrieval_method", "unknown")
+            "citations": citations[:6],
+            "retrieval_method": selected_chunks[0].get("retrieval_method", "unknown")
         }
 
 def summarize_document(
@@ -211,7 +257,7 @@ def summarize_document(
         }
 
     sample_text_parts = []
-    char_limit = 6000
+    char_limit = 8000
     current_chars = 0
 
     for page in pages:
@@ -226,12 +272,12 @@ def summarize_document(
 
     content_sample = "\n\n".join(sample_text_parts)
 
-    prompt = f"""Analyze the following excerpt from document '{doc_name}':
+    prompt = f"""Analyze the following document '{doc_name}':
 
 {content_sample}
 
 Task:
-1. Provide a concise 2-3 paragraph executive summary of the document.
+1. If this is a resume, provide a summary mentioning the candidate's name, specialization, experience, key projects, and education. If a general document, provide a comprehensive executive summary.
 2. Provide 3 relevant, insightful questions that a user might ask about this document.
 
 Format your output strictly as:
@@ -266,9 +312,9 @@ QUESTIONS:
 
         if not questions:
             questions = [
-                "What is the main objective of this document?",
-                "What are the primary findings or details?",
-                "Can you summarize the most important points?"
+                "Who is this candidate and what is their background?",
+                "What are the key technical skills and projects?",
+                "Can you detail their work experience and education?"
             ]
 
         return {

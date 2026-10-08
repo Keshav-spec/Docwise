@@ -136,7 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
     metaEngineBadge.textContent = isDense ? "Dense Embeddings" : "Lexical Index";
     metaEngineBadge.style.color = isDense ? "var(--accent-cyan)" : "var(--accent-amber)";
 
-    docSummaryText.textContent = doc.summary;
+    docSummaryText.innerHTML = formatMarkdown(doc.summary);
 
     // Render starter questions
     starterQuestionsList.innerHTML = "";
@@ -229,7 +229,7 @@ document.addEventListener("DOMContentLoaded", () => {
     row.innerHTML = `
       <div class="message-bubble">
         <div class="message-sender">Docwise</div>
-        <div class="message-text">${escapeHtml(text)}</div>
+        <div class="message-text">${formatMarkdown(text)}</div>
         <div class="citations-container"></div>
       </div>
     `;
@@ -248,7 +248,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const textEl = row.querySelector(".message-text");
     if (textEl) {
-      textEl.textContent = text;
+      textEl.innerHTML = formatMarkdown(text);
     }
 
     const citationsContainer = row.querySelector(".citations-container");
@@ -266,11 +266,22 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
 
     citations.forEach(c => {
+      let scoreLabel = "";
+      if (typeof c.score === "number") {
+        if (c.score <= 1.0 && c.score > 0) {
+          scoreLabel = `Relevance: ${Math.round(c.score * 100)}%`;
+        } else {
+          scoreLabel = `Relevance: ${c.score}`;
+        }
+      } else {
+        scoreLabel = `Relevance: ${c.score || "Context"}`;
+      }
+
       citationsHtml += `
         <div class="citation-item">
           <div class="citation-meta">
             <span class="page-badge">Page ${c.page_num}</span>
-            <span class="score-badge">Relevance: ${c.score}</span>
+            <span class="score-badge">${scoreLabel}</span>
           </div>
           <div class="citation-snippet">"${escapeHtml(c.snippet)}"</div>
         </div>
@@ -289,6 +300,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  function formatMarkdown(text) {
+    if (!text) return "";
+    let formatted = escapeHtml(text);
+    // Bold text: **text**
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    // Markdown headers: ### Header, ## Header
+    formatted = formatted.replace(/^###\s+(.*)$/gm, "<h4 style='margin: 8px 0 4px; color: #f8fafc;'>$1</h4>");
+    formatted = formatted.replace(/^##\s+(.*)$/gm, "<h3 style='margin: 10px 0 6px; color: #f8fafc;'>$1</h3>");
+    // Bullet list items
+    formatted = formatted.replace(/^[\*\-]\s+(.*)$/gm, "<div style='margin-left: 12px; margin-bottom: 3px;'>• $1</div>");
+    return formatted;
   }
 
   // Clear Session Handler
