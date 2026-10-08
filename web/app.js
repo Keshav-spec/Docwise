@@ -5,13 +5,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // DOM Elements
   const statusIndicator = document.getElementById("system-status-indicator");
   const statusText = document.getElementById("status-text");
-  const settingsToggleBtn = document.getElementById("settings-toggle-btn");
-  const settingsModal = document.getElementById("settings-modal");
-  const closeModalBtn = document.getElementById("close-modal-btn");
-  const saveSettingsBtn = document.getElementById("save-settings-btn");
-  const apiKeyInput = document.getElementById("api-key-input");
-  const modelSelect = document.getElementById("model-select");
-  const topKInput = document.getElementById("top-k-input");
   const clearSessionBtn = document.getElementById("clear-session-btn");
 
   const dropZone = document.getElementById("drop-zone");
@@ -39,18 +32,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // State Management
   let state = {
-    apiKey: localStorage.getItem("docwise_api_key") || "",
-    model: localStorage.getItem("docwise_model") || "gemini-1.5-flash",
-    topK: parseInt(localStorage.getItem("docwise_top_k") || "4", 10),
     hasUploadedDocument: false,
     activeDocument: null,
     isProcessingQuery: false
   };
-
-  // Initialize input fields from state
-  apiKeyInput.value = state.apiKey;
-  modelSelect.value = state.model;
-  topKInput.value = state.topK;
 
   // Poll system status
   async function checkSystemStatus() {
@@ -59,9 +44,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (res.ok) {
         const data = await res.json();
         statusIndicator.classList.remove("offline");
-        statusText.textContent = data.has_api_key || state.apiKey ? "Ready" : "API Key Required";
+        statusText.textContent = data.has_api_key ? "Docwise Engine Active" : "Server Key Missing";
         if (data.indexed_chunks_count > 0) {
-          engineStatusText.textContent = `Indexed Chunks: ${data.indexed_chunks_count} | Mode: ${data.use_dense_embeddings ? "Dense Embeddings" : "Lexical Index"}`;
+          engineStatusText.textContent = `Indexed Chunks: ${data.indexed_chunks_count} | Engine: ${data.use_dense_embeddings ? "Dense Embeddings" : "Lexical Index"} | Model: ${data.model}`;
+        } else {
+          engineStatusText.textContent = `Model: ${data.model} | Embeddings: Ready`;
         }
       }
     } catch (e) {
@@ -71,46 +58,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   checkSystemStatus();
-
-  // Settings Modal Handlers
-  settingsToggleBtn.addEventListener("click", () => {
-    settingsModal.classList.remove("hidden");
-  });
-
-  closeModalBtn.addEventListener("click", () => {
-    settingsModal.classList.add("hidden");
-  });
-
-  settingsModal.addEventListener("click", (e) => {
-    if (e.target === settingsModal) {
-      settingsModal.classList.add("hidden");
-    }
-  });
-
-  saveSettingsBtn.addEventListener("click", async () => {
-    state.apiKey = apiKeyInput.value.trim();
-    state.model = modelSelect.value;
-    state.topK = parseInt(topKInput.value, 10) || 4;
-
-    localStorage.setItem("docwise_api_key", state.apiKey);
-    localStorage.setItem("docwise_model", state.model);
-    localStorage.setItem("docwise_top_k", state.topK.toString());
-
-    if (state.apiKey) {
-      try {
-        await fetch("/api/config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ api_key: state.apiKey, model_name: state.model })
-        });
-      } catch (err) {
-        console.error("Failed to sync config with server", err);
-      }
-    }
-
-    settingsModal.classList.add("hidden");
-    checkSystemStatus();
-  });
 
   // File Upload Handlers
   browseBtn.addEventListener("click", () => fileInput.click());
@@ -150,9 +97,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const formData = new FormData();
     formData.append("file", file);
-    if (state.apiKey) {
-      formData.append("api_key", state.apiKey);
-    }
 
     try {
       const res = await fetch("/api/upload", {
@@ -226,12 +170,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!query) return;
 
-    if (!state.apiKey) {
-      alert("Please configure your Google Gemini API key in Settings before submitting queries.");
-      settingsModal.classList.remove("hidden");
-      return;
-    }
-
     if (state.isProcessingQuery) return;
 
     // Append user message to view
@@ -248,10 +186,7 @@ document.addEventListener("DOMContentLoaded", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question: query,
-          api_key: state.apiKey,
-          model_name: state.model,
-          top_k: state.topK
+          question: query
         })
       });
 

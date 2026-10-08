@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_GENERATION_MODEL = "gemini-1.5-flash"
+DEFAULT_GENERATION_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview").strip()
 DEFAULT_EMBEDDING_MODEL = "models/text-embedding-004"
 DEFAULT_CHUNK_SIZE = 800
 DEFAULT_CHUNK_OVERLAP = 150

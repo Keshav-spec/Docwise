@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -24,45 +24,27 @@ app = FastAPI(title="Docwise API", version="2.0.0")
 vector_store = VectorStore(embedding_model=DEFAULT_EMBEDDING_MODEL)
 uploaded_documents = []
 chat_history = []
-runtime_api_key = get_api_key()
 
 class QueryRequest(BaseModel):
     question: str
-    api_key: Optional[str] = None
-    model_name: Optional[str] = DEFAULT_GENERATION_MODEL
     top_k: Optional[int] = DEFAULT_TOP_K
-
-class ConfigRequest(BaseModel):
-    api_key: str
-    model_name: Optional[str] = DEFAULT_GENERATION_MODEL
 
 @app.get("/api/status")
 def get_status():
-    global runtime_api_key
-    has_key = bool(runtime_api_key and runtime_api_key.strip())
+    server_key = get_api_key()
     return {
         "status": "online",
-        "has_api_key": has_key,
-        "default_model": DEFAULT_GENERATION_MODEL,
+        "has_api_key": bool(server_key),
+        "model": DEFAULT_GENERATION_MODEL,
         "indexed_documents_count": len(uploaded_documents),
         "indexed_chunks_count": len(vector_store.chunks),
         "use_dense_embeddings": vector_store.use_dense
     }
 
-@app.post("/api/config")
-def update_config(config: ConfigRequest):
-    global runtime_api_key
-    if config.api_key:
-        runtime_api_key = config.api_key.strip()
-    return {"message": "Configuration updated successfully", "has_api_key": bool(runtime_api_key)}
-
 @app.post("/api/upload")
-async def upload_pdf(
-    file: UploadFile = File(...),
-    api_key: Optional[str] = Form(None)
-):
-    global runtime_api_key, uploaded_documents, vector_store
-    active_key = api_key.strip() if api_key and api_key.strip() else runtime_api_key
+async def upload_pdf(file: UploadFile = File(...)):
+    global uploaded_documents, vector_store
+    server_key = get_api_key()
 
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -76,7 +58,7 @@ async def upload_pdf(
         pages = extraction_result["pages"]
 
         if not pages or extraction_result["total_characters"] == 0:
-            raise HTTPException(status_code=400, detail="Could not extract text. The document may be scanned or empty.")
+            raise HTTPException(status_code=400, detail="Could not extract readable text. The document may be scanned or empty.")
 
         chunks = chunk_pages(
             pages=pages,
@@ -85,12 +67,12 @@ async def upload_pdf(
             chunk_overlap=DEFAULT_CHUNK_OVERLAP
         )
 
-        vector_store.add_chunks(chunks, api_key=active_key)
+        vector_store.add_chunks(chunks, api_key=server_key)
 
         doc_summary_data = summarize_document(
             pages=pages,
             doc_name=file.filename,
-            api_key=active_key,
+            api_key=server_key,
             model_name=DEFAULT_GENERATION_MODEL
         )
 
@@ -115,11 +97,14 @@ async def upload_pdf(
 
 @app.post("/api/query")
 def query_document(req: QueryRequest):
-    global runtime_api_key, chat_history, vector_store
-    active_key = req.api_key.strip() if req.api_key and req.api_key.strip() else runtime_api_key
+    global chat_history, vector_store
+    server_key = get_api_key()
 
-    if not active_key:
-        raise HTTPException(status_code=400, detail="Gemini API key is not configured. Please enter your API key.")
+    if not server_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: GEMINI_API_KEY environment variable is not configured."
+        )
 
     if not vector_store.chunks:
         raise HTTPException(status_code=400, detail="No documents indexed. Please upload a PDF first.")
@@ -127,8 +112,8 @@ def query_document(req: QueryRequest):
     result = answer_question_with_citations(
         vector_store=vector_store,
         question=req.question,
-        api_key=active_key,
-        model_name=req.model_name or DEFAULT_GENERATION_MODEL,
+        api_key=server_key,
+        model_name=DEFAULT_GENERATION_MODEL,
         top_k=req.top_k or DEFAULT_TOP_K
     )
 
@@ -193,4 +178,4 @@ if os.path.exists(web_dir):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

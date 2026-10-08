@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import streamlit as st
 import os
 from dotenv import load_dotenv
@@ -83,24 +82,16 @@ if "document_summary" not in st.session_state:
 if "starter_questions" not in st.session_state:
     st.session_state.starter_questions = []
 
+api_key = get_api_key()
+
 # Sidebar Controls
 with st.sidebar:
-    st.header("Configuration")
-    
-    env_key = get_api_key()
-    api_key_input = st.text_input(
-        "Google Gemini API Key",
-        value=env_key,
-        type="password",
-        help="Enter your API key or configure GEMINI_API_KEY in your .env file."
-    )
-    api_key = api_key_input.strip() if api_key_input else env_key
-
-    model_option = st.selectbox(
-        "Generation Model",
-        options=["gemini-1.5-flash", "gemini-1.5-pro"],
-        index=0
-    )
+    st.header("System Status")
+    st.info(f"Model: {DEFAULT_GENERATION_MODEL}")
+    if api_key:
+        st.success("API Key: Configured in Environment")
+    else:
+        st.warning("API Key: Not detected in environment (GEMINI_API_KEY)")
 
     top_k = st.slider("Top-K Retrieved Chunks", min_value=1, max_value=8, value=DEFAULT_TOP_K)
 
@@ -124,7 +115,7 @@ with st.sidebar:
 
 # Main Content Interface
 st.markdown('<div class="main-title">Docwise</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Dense vector retrieval and precision document analysis powered by Google Gemini.</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="sub-title">Dense vector retrieval and precision document analysis powered by Google Gemini ({DEFAULT_GENERATION_MODEL}).</div>', unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader(
     "Upload a PDF Document",
@@ -160,7 +151,7 @@ if uploaded_file is not None:
                     pages=pages,
                     doc_name=uploaded_file.name,
                     api_key=api_key,
-                    model_name=model_option
+                    model_name=DEFAULT_GENERATION_MODEL
                 )
 
                 st.session_state.document_metadata = {
@@ -203,14 +194,14 @@ if uploaded_file is not None:
 
     if st.button("Submit Question", type="primary") and question:
         if not api_key:
-            st.error("Please provide a Gemini API key in the sidebar configuration.")
+            st.error("Server configuration error: GEMINI_API_KEY is not configured in the environment.")
         else:
             with st.spinner("Retrieving relevant passages and synthesizing answer..."):
                 response_data = answer_question_with_citations(
                     vector_store=st.session_state.vector_store,
                     question=question,
                     api_key=api_key,
-                    model_name=model_option,
+                    model_name=DEFAULT_GENERATION_MODEL,
                     top_k=top_k
                 )
 
@@ -257,93 +248,3 @@ if st.session_state.chat_history:
         file_name="docwise_conversation.md",
         mime="text/markdown"
     )
-=======
-import streamlit as st
-import google.generativeai as genai
-import fitz  
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-
-# 🔑 Gemini API Key
-genai.configure(api_key="Your_api_key_here")
-
-# 📄 Extract text from uploaded PDF
-def extract_text_from_pdf(pdf_file):
-    doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    return text
-
-# 🧩 Break long text into chunks
-def chunk_text(text, chunk_size=500):
-    words = text.split()
-    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
-
-# 🔍 Find most relevant chunks
-def find_relevant_chunks(chunks, question, top_k=3):
-    vectorizer = TfidfVectorizer().fit_transform(chunks + [question])
-    vectors = vectorizer.toarray()
-    similarity = cosine_similarity([vectors[-1]], vectors[:-1])
-    top_indices = np.argsort(similarity[0])[::-1][:top_k]
-    return [chunks[i] for i in top_indices]
-
-# 🤖 Ask Gemini with context
-def ask_gemini_about_pdf_chunks(chunks, question):
-    model = genai.GenerativeModel('ai_model_name_here')  # Replace with your model name
-    context = "\n\n".join(chunks)
-    prompt = f"""You are given parts of a PDF. Based on this content, answer the user's question.
-
-PDF Chunks:
-{context}
-
-Question:
-{question}
-"""
-    response = model.generate_content(prompt)
-    return response.text
-
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []  # (question, answer)
-
-if 'selected_question_index' not in st.session_state:
-    st.session_state.selected_question_index = None
-
-# -------- Sidebar Chat History --------
-with st.sidebar:
-
-    if st.button("🧹 Clear Chat"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.experimental_rerun()
-
-    st.subheader("💬 Your Questions")
-    for idx, (question, _) in enumerate(st.session_state.chat_history):
-        if st.button(question, key=f"q_{idx}"):
-            st.session_state.selected_question_index = idx
-
-    if st.session_state.selected_question_index is not None:
-        q, a = st.session_state.chat_history[st.session_state.selected_question_index]
-        st.markdown("---")
-        st.markdown(f"**👉 Selected Question:** `{q}``")
-        st.markdown(f"**📄 Answer:** {a}")
-
-# -------- Main Interface --------
-st.title("📄 Docwise")
-
-uploaded_file = st.file_uploader("Upload a PDF", type="pdf", key="pdf_uploader")
-
-if uploaded_file is not None:
-    pdf_text = extract_text_from_pdf(uploaded_file)
-    chunks = chunk_text(pdf_text)
-
-    question = st.text_input("Ask a question about your PDF:")
-    if question:
-        relevant_chunks = find_relevant_chunks(chunks, question)
-        answer = ask_gemini_about_pdf_chunks(relevant_chunks, question)
-
-        st.session_state.chat_history.append((question, answer))
-        st.write("🧠 **Answer:**", answer)
-
->>>>>>> 592a5aad67f2d846ee19c58bf5eaaf4be95b53a6
