@@ -4,6 +4,8 @@ Docwise is an advanced document question-answering and retrieval system powered 
 
 Live Deployment: [https://docwise-web.onrender.com/](https://docwise-web.onrender.com/)
 
+<img width="1514" height="849" alt="image" src="https://github.com/user-attachments/assets/bd678849-9d3b-4f02-8d50-2746b8942146" />
+
 ---
 
 ## Architectural Overview
