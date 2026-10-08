@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import google.generativeai as genai
 from core.config import DEFAULT_GENERATION_MODEL, DEFAULT_TOP_K
 from core.embeddings import VectorStore
@@ -11,6 +11,111 @@ SYSTEM_INSTRUCTION = (
     "Do not extrapolate or fabricate facts."
 )
 
+_cached_working_model: Optional[str] = None
+
+def get_candidate_models(api_key: str, preferred: Optional[str] = None) -> List[str]:
+    """
+    Returns an ordered list of candidate model names:
+    1. Cached working model (if known)
+    2. Preferred model from configuration
+    3. Models discovered dynamically from the Gemini ModelService
+    4. Standard fallback names
+    """
+    global _cached_working_model
+    candidates: List[str] = []
+
+    if _cached_working_model:
+        candidates.append(_cached_working_model)
+
+    if preferred and preferred.strip():
+        pref = preferred.strip().replace("models/", "")
+        if pref not in candidates:
+            candidates.append(pref)
+
+    # Discover models enabled for this specific API key via ListModels
+    try:
+        genai.configure(api_key=api_key.strip())
+        for m in genai.list_models():
+            methods = getattr(m, "supported_generation_methods", [])
+            if "generateContent" in methods:
+                clean_name = m.name.replace("models/", "")
+                if clean_name not in candidates:
+                    candidates.append(clean_name)
+    except Exception:
+        pass
+
+    # Built-in fallback candidates in order of capability
+    standard_fallbacks = [
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro-latest",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
+    for fb in standard_fallbacks:
+        if fb not in candidates:
+            candidates.append(fb)
+
+    return candidates
+
+def generate_with_fallback(
+    api_key: str,
+    prompt: str,
+    preferred_model: Optional[str] = None,
+    system_instruction: Optional[str] = None
+) -> str:
+    """
+    Executes content generation with automatic model fallback if a 404 Not Found
+    or unsupported model error is encountered.
+    """
+    global _cached_working_model
+    candidates = get_candidate_models(api_key, preferred_model)
+    last_error: Optional[Exception] = None
+
+    genai.configure(api_key=api_key.strip())
+
+    for model_name in candidates:
+        try:
+            try:
+                if system_instruction:
+                    model = genai.GenerativeModel(
+                        model_name=model_name,
+                        system_instruction=system_instruction
+                    )
+                else:
+                    model = genai.GenerativeModel(model_name=model_name)
+                response = model.generate_content(prompt)
+            except Exception as e_inner:
+                err_str = str(e_inner).lower()
+                if "system_instruction" in err_str:
+                    # Retry without system_instruction parameter for older model APIs
+                    model = genai.GenerativeModel(model_name=model_name)
+                    combined_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
+                    response = model.generate_content(combined_prompt)
+                else:
+                    raise e_inner
+
+            if response and response.text:
+                _cached_working_model = model_name
+                return response.text
+        except Exception as e:
+            last_error = e
+            err_msg = str(e).lower()
+            # If model is 404 or unsupported, continue trying next candidate
+            if "404" in err_msg or "not found" in err_msg or "not supported" in err_msg:
+                continue
+            # If authentication or quota failure, do not retry other models pointlessly
+            if "quota" in err_msg or "api_key" in err_msg or "permission" in err_msg or "invalid api key" in err_msg:
+                raise e
+            continue
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("No compatible Gemini model could be reached.")
+
 def answer_question_with_citations(
     vector_store: VectorStore,
     question: str,
@@ -20,11 +125,11 @@ def answer_question_with_citations(
 ) -> Dict[str, Any]:
     """
     Performs semantic retrieval against the vector store and synthesizes an answer
-    with explicit page citations using Gemini.
+    with explicit page citations using Gemini with automatic model fallback.
     """
     if not api_key or not api_key.strip():
         return {
-            "answer": "Error: Gemini API key is required. Please provide a valid API key in settings or environment.",
+            "answer": "Error: Gemini API key is required. Please set GEMINI_API_KEY in the environment.",
             "citations": [],
             "retrieval_method": "none"
         }
@@ -66,13 +171,12 @@ User Question:
 Provide an accurate, well-structured answer with page citations [Page X]."""
 
     try:
-        genai.configure(api_key=api_key.strip())
-        model = genai.GenerativeModel(
-            model_name=model_name,
+        answer_text = generate_with_fallback(
+            api_key=api_key,
+            prompt=prompt,
+            preferred_model=model_name,
             system_instruction=SYSTEM_INSTRUCTION
         )
-        response = model.generate_content(prompt)
-        answer_text = response.text if response and response.text else "No response generated."
 
         return {
             "answer": answer_text,
@@ -93,11 +197,12 @@ def summarize_document(
     model_name: str = DEFAULT_GENERATION_MODEL
 ) -> Dict[str, Any]:
     """
-    Generates an executive summary and 3-4 starter questions for a newly uploaded document.
+    Generates an executive summary and 3-4 starter questions for a newly uploaded document
+    using automatic model fallback.
     """
     if not api_key or not api_key.strip() or not pages:
         return {
-            "summary": "Document indexed successfully. Provide an API key to view automated summary and suggested questions.",
+            "summary": "Document indexed successfully. Configure GEMINI_API_KEY to view automated summary and suggested questions.",
             "starter_questions": [
                 "What is the main topic of this document?",
                 "What are the key conclusions or findings?",
@@ -139,10 +244,11 @@ QUESTIONS:
 - [Question 3]"""
 
     try:
-        genai.configure(api_key=api_key.strip())
-        model = genai.GenerativeModel(model_name=model_name)
-        response = model.generate_content(prompt)
-        raw_text = response.text or ""
+        raw_text = generate_with_fallback(
+            api_key=api_key,
+            prompt=prompt,
+            preferred_model=model_name
+        )
 
         summary = "Document analyzed successfully."
         questions = []
